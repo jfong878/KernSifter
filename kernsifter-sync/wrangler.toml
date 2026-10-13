@@ -1,0 +1,32 @@
+name = "kernsifter-sync"
+main = "src/index.ts"
+compatibility_date = "2026-10-13"
+
+# Static client is served as Workers assets. run_worker_first is required so
+# /auth/freebuff/* reaches the Worker before the asset handler.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+not_found_handling = "single-page-application"
+
+[observability]
+enabled = true
+
+[vars]
+# Public configuration, not secrets. Fill FREEBUFF_CLIENT_ID from:
+#   npx @freebuff/auth register --project kernsifter --name "KernSifter" \
+#     --environment production --redirect-uri <origin>/auth/freebuff/callback
+FREEBUFF_CLIENT_ID = "REPLACE_ME"
+APP_ORIGIN = "REPLACE_ME"
+
+# Structured sync state.
+[[d1_databases]]
+binding = "SYNC_DB"
+database_name = "kernsifter-sync-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+# Payload blobs, keyed by owner.
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "kernsifter-sync-files"

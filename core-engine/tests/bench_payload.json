@@ -1,0 +1,34 @@
+[
+  {
+    "path": "C:\\bench\\rootA\\deep\\sub\\file.txt",
+    "category": "Temp",
+    "kind": "File",
+    "file_type": "txt",
+    "size_bytes": 512,
+    "verdict": { "allowed": true, "reason": null, "rule": null }
+  },
+  {
+    "path": "C:\\bench\\rootA\\deep\\other.log",
+    "category": "Temp",
+    "kind": "File",
+    "file_type": "log",
+    "size_bytes": 1024,
+    "verdict": { "allowed": true, "reason": null, "rule": null }
+  },
+  {
+    "path": "D:\\volumeB\\leaf\\binary.dat",
+    "category": "Cache",
+    "kind": "File",
+    "file_type": "dat",
+    "size_bytes": 4096,
+    "verdict": { "allowed": true, "reason": null, "rule": null }
+  },
+  {
+    "path": "C:\\Windows\\allowed\\probe.tmp",
+    "category": "Temp",
+    "kind": "File",
+    "file_type": "tmp",
+    "size_bytes": 1,
+    "verdict": { "allowed": true, "reason": null, "rule": null }
+  }
+]

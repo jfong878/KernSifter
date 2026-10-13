@@ -1,0 +1,25 @@
+[package]
+name = "desktop-ui"
+version = "0.1.0"
+edition = "2021"
+description = "KernSifter desktop shell (Tauri 2) — binds core-engine"
+license = "MIT OR Apache-2.0"
+
+# The Tauri template layout: main.rs calls into this lib.
+# NOTE: no "cdylib" here — on the windows-gnu toolchain, GNU ld overflows
+# the 16-bit PE ordinal table when exporting webview2-com's ~100k symbols
+# ("export ordinal too large: 103470"). The desktop shell only needs the
+# rlib for the binary; re-add cdylib only if plugin/mobile builds need it.
+[lib]
+name = "desktop_ui_lib"
+crate-type = ["staticlib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The single source of truth — all cleaning logic lives here.
+core-engine = { path = "../../core-engine" }

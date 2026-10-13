@@ -1,0 +1,32 @@
+# PREVIEW ONLY — used with `wrangler deploy -c wrangler.preview.toml --temporary`.
+#
+# Route-surface preview only: it carries NO D1 and NO R2 binding, because a
+# temporary wrangler preview account can hold neither. Verified by attempting
+# both on 2026-10-13:
+#   R2: "R2 bucket 'kernsifter-sync-files' not found" [code: 10085]
+#   D1: "D1 binding 'SYNC_DB' references database '0000...' which was not found" [code: 10181]
+# and `wrangler d1 create` / `wrangler r2 bucket create` both require a real
+# API token, so they cannot be provisioned in a temporary account either.
+#
+# What this preview therefore proves: assets are served, /auth/freebuff/*
+# reaches the SDK, and /api/sync is gated with 401 when signed out. Storage
+# paths need the production config (wrangler.toml) and a real account.
+#
+# APP_ORIGIN is a syntactically valid placeholder: sign-in cannot complete
+# without a real Freebuff client ID, but /auth/freebuff/session and the 401
+# on /api/sync are still exercised.
+name = "kernsifter-sync-preview"
+main = "src/index.ts"
+compatibility_date = "2026-10-13"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+not_found_handling = "single-page-application"
+
+[vars]
+FREEBUFF_CLIENT_ID = "REPLACE_ME"
+APP_ORIGIN = "https://kernsifter-sync-preview.invalid"
+
+# No [[d1_databases]] and no [[r2_buckets]] here on purpose — see the header.

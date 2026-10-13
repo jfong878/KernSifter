@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@freebuff/auth": "^0.1.0"
+  }
+}

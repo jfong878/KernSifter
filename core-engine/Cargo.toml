@@ -1,0 +1,38 @@
+[package]
+name = "core-engine"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+description = "KernSifter — cross-platform space management & cleaning engine"
+license = "MIT OR Apache-2.0"
+
+[lib]
+# `cdylib` is what the mobile shells load: Android's `libcore_engine.so` and
+# iOS/macOS's `libcore_engine.dylib`. `rlib` is kept so the CLI, the Tauri shell
+# and the test suite link it as an ordinary Rust dependency. Both come from the
+# same source, so a shell can never drift from the engine.
+name = "core_engine"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+# Recursive filesystem walking for the Phase 1 scanners.
+walkdir = "2"
+# Parallel processing of walked entries (multi-threaded scanning).
+rayon = "1"
+# System/disk introspection (drive sizes, filesystems, APFS snapshot awareness).
+sysinfo = "0.33"
+# Manifest serialization: every destructive op first emits a JSON dry-run report.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Error types for the safety-layer APIs (manifest registry, gated execution).
+thiserror = "2"
+# Safe Deletion Protocol: move files to the OS trash instead of permanently
+# deleting them (Windows Recycle Bin, macOS Trash, freedesktop trash).
+trash = "5"
+# Home-directory resolution (user profile roots, %LocalAppData%, ~/Library, ...).
+dirs = "6"
+
+# Audit CLI: validates paths against the protected-path matrix, prints JSON.
+[[bin]]
+name = "core-engine-cli"
+path = "src/bin/core-engine-cli.rs"

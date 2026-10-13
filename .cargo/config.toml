@@ -1,0 +1,50 @@
+# KernSifter — workspace build configuration.
+#
+# Windows GNU toolchain: rustc needs a C linker for build scripts and the
+# bin targets. The MinGW gcc ships via WinGet (WinLibs), nested under
+# mingw64/bin. Set here (not via RUSTFLAGS) so the flags stay stable —
+# changing RUSTFLAGS invalidates the entire build cache.
+
+[target.x86_64-pc-windows-gnu]
+linker = "C:/Users/jfong/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin/gcc.exe"
+# NOTE: deliberately no rustflags here. `-Wl,--kill-at` is needed only for the
+# desktop shell's webview2-com link (GNU ld overflows the 16-bit PE ordinal
+# table without name-based exports), and desktop-ui/src-tauri/build.rs supplies
+# it for that package's targets. As a global rustflag it is actively harmful:
+# ld also rewrites the import/export names of every proc-macro DLL
+# (windows-interface, windows-implement, serde_derive, …), and those links then
+# fail with thousands of mangled "undefined reference" errors.
+
+[build]
+# No target-dir override: build output stays in the workspace `target/` on F:.
+#
+# History, because the reasoning is not obvious from the absence of a line:
+# on 2026-09-27 a `target-dir` pointing at C: was added here, because F: is a
+# USB volume that was throwing NTFS Id 55 MFT/index corruption and rustc reads
+# dependency metadata (.rmeta) straight back off disk and trusts it. An artifact
+# landing on a bad sector panics the compiler with
+#     invalid enum variant tag while decoding `TyKind`, expected 0..29, actual N
+# (N differs per failure — 118 on `url`, 32 on the `windows` crate) and then
+# reports thousands of bogus trait-bound errors. That is corrupt build input,
+# not a rustc bug: no compiler flag can work around it.
+#
+# That override was removed on 2026-09-27 later the same day. Reason: this
+# machine's storage is sparse, and keeping a multi-GB cache on C: is not
+# affordable. F: keeps the artifacts.
+#
+# The underlying risk is NOT fixed, and do not read "Healthy" as reassurance.
+# An elevated `Repair-Volume -OfflineScanAndFix` did return ErrorsFixed and
+# cleared the dirty bit, so `Get-Volume` now reports Healthy/OK and the Ntfs
+# Id 55 entries stopped. But the `disk` Event Id 11 controller errors on
+# \Device\Harddisk1 are hardware/transport level, below the filesystem, and a
+# filesystem repair cannot address them. They were still firing on 2026-09-27
+# (last observed 20:02:56). So the TyKind panic above can still recur here.
+#
+# Mitigation: build through `scripts\invoke-build.ps1`, which watches for that
+# signature and purges the cache instead of leaving you to diagnose bogus trait
+# errors by hand. If F: ever goes quiet for a sustained stretch, re-check the
+# Event Id 11 count before assuming the hardware is fine.
+#
+# (The `target-dir` line is intentionally absent. Do not reintroduce it without
+# confirming free space on C: first.)
+# No jobs override — this machine is slow enough under full parallelism already.

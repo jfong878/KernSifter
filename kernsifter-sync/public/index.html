@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Kernsifter Sync</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+</head>
+<body>
+  <h1>Kernsifter Sync</h1>
+  <section id="signed-out">
+    <p>Sign in to view your synced items.</p>
+    <a href="/auth/freebuff/signin?returnTo=/" id="signin-btn">Sign in with Freebuff</a>
+  </section>
+  <section id="signed-in" hidden>
+    <p><span id="user-name"></span></p>
+    <button id="sync-btn" type="button">Sync now</button>
+    <pre id="out"></pre>
+  </section>
+  <script>
+    const userEl = document.getElementById('user-name');
+    const outEl  = document.getElementById('out');
+    const inEl   = document.getElementById('signed-out');
+    const signEl = document.getElementById('signed-in');
+
+    async function loadUser() {
+      try {
+        const r = await fetch('/auth/freebuff/session');
+        if (r.ok) {
+          const u = await r.json();
+          userEl.textContent = u ? (u.name || u.email || 'signed in') : 'signed in';
+          inEl.hidden = true;
+          signEl.hidden = false;
+        } else {
+          inEl.hidden = false;
+          signEl.hidden = true;
+        }
+      } catch { /* offline */ }
+    }
+    loadUser();
+    document.getElementById('sync-btn').addEventListener('click', async () => {
+      outEl.textContent = 'syncing...';
+      try {
+        const r = await fetch('/api/sync', { method: 'GET', headers: { 'X-Kernsifter-Client': 'desktop' } });
+        outEl.textContent = await r.text();
+      } catch (e) {
+        outEl.textContent = String(e);
+      }
+    });
+  </script>
+</body>
+</html>

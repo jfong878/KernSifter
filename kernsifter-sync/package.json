@@ -1,0 +1,26 @@
+{
+  "name": "kernsifter-sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "d1:schema:local": "wrangler d1 execute kernsifter-sync-db --local --file=src/db-schema.sql",
+    "d1:schema:remote": "wrangler d1 execute kernsifter-sync-db --remote --file=src/db-schema.sql",
+    "d1:list:local": "wrangler d1 execute kernsifter-sync-db --local --command \"SELECT id, client_id, kind, owner_sub, payload_hash, created_at FROM kernsifter_items ORDER BY id\""
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261013.1",
+    "typescript": "5.8.3",
+    "wrangler": "^4.150.0"
+  },
+  "dependencies": {
+    "@freebuff/auth": "0.1.0"
+  },
+  "allowScripts": {
+    "workerd@1.20261006.1": true,
+    "esbuild@0.28.2": true
+  }
+}

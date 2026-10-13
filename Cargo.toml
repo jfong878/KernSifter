@@ -1,0 +1,14 @@
+# KernSifter — Cargo workspace root.
+#
+# The Rust core is the single source of truth for cleaning logic; the Tauri
+# shell in desktop-ui/src-tauri binds to it as a path dependency. The Flutter
+# shell (mobile-ui) binds the compiled core via FFI instead.
+
+[workspace]
+resolver = "2"
+members = ["core-engine", "desktop-ui/src-tauri"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

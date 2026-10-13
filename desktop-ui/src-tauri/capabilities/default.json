@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the main window. Custom app commands (scan, generate_manifest, execute_manifest) are app-level and always allowed; core:default covers the base Tauri API surface used by the frontend.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

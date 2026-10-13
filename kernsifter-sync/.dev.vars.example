@@ -1,0 +1,9 @@
+# Copy to .dev.vars for local development. Neither value is a secret.
+#
+# Register the development client once, signed in as the project creator:
+#   npx @freebuff/auth register --project kernsifter --name "KernSifter" \
+#     --environment development --redirect-uri http://localhost:8787/auth/freebuff/callback
+#
+# Then paste the printed client ID here.
+FREEBUFF_CLIENT_ID=REPLACE_ME
+APP_ORIGIN=http://localhost:8787
