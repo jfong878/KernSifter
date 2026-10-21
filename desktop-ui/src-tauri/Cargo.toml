@@ -23,3 +23,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The single source of truth — all cleaning logic lives here.
 core-engine = { path = "../../core-engine" }
+# OS credential store for the sync bearer token (Windows Credential Manager /
+# Keychain / Secret Service). Chosen over a settings file because a bearer token
+# is a credential for the user's synced data. No Rust HTTP client is needed: the
+# device-authorization flow runs in the webview, which already has `fetch`.
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }

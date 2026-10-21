@@ -12,6 +12,7 @@ Run in workerd via `wrangler dev` on 2026-10-13:
 | --- | --- |
 | `tsc --noEmit` | exit 0 |
 | `node test/routes.test.mjs` | `PASS 9/9 route behaviours` |
+| `node test/auth.test.mjs` | `PASS 25/25 auth behaviours` (real schema in `node:sqlite`) |
 | `wrangler d1 execute --local --file=src/db-schema.sql` | exit 0 |
 | Upsert replayed twice against real local SQLite | 1 row, updated in place |
 | `GET /` | 200 `text/html` (assets served) |
@@ -104,8 +105,33 @@ on — that never traced to a Freebuff or Cloudflare page.
 - `GET /api/sync` → `{ items: [{ id, client_id, kind, owner_sub, payload_hash, meta, created_at }] }` for the session user.
 - `POST /api/sync` `{ items: [{ clientId, kind, payload, meta? }] }` → `{ saved: [{ clientId, ok, id?, error? }] }`. Owner is always the session `sub`; `clientId` makes retries idempotent. Limits: 100 items, 256 KiB payload, 4 KiB meta.
 - `GET /api/sync/<kind>/<clientId>` → `{ payload, payloadHash }` from R2, or 404.
+- `POST /api/device/authorize` `{ clientName? }` → `{ device_code, user_code, verification_uri, verification_uri_complete, expires_in, interval }`.
+- `POST /api/device/token` `{ device_code }` → `{ access_token, token_type, expires_in }`, or `{ error }` one of `authorization_pending` / `slow_down` / `access_denied` / `expired_token` / `invalid_grant`.
+- `GET /api/tokens` → `{ tokens: [...] }`; `POST /api/tokens/revoke` `{ id }` or `{ all: true }` → `{ revoked }`.
 
-**Known gap:** the desktop/mobile apps are not same-origin browsers, so the
-cookie-session model plus `isSameOriginRequest` covers the web client only. Native
-clients need a device-authorization flow or a per-user token stored in D1 — deliberately
-not weakened here, since same-origin enforcement is a security control.
+All three sync routes accept `Authorization: Bearer <token>` from a native client
+as well as the session cookie.
+
+## Native clients (desktop + mobile)
+
+The cookie-session model covers the web client only: a native app is not a
+same-origin browser, and `@freebuff/auth` both refuses token requests from
+browsers and offers no device grant. So the Worker runs its own **device
+authorization** (RFC 8628) and issues its own **per-user bearer tokens** stored
+in D1. Freebuff issues identity; the Worker issues the machine credential.
+
+- `POST /api/device/authorize` → a device code and a short human code. The human
+  approves in a browser using the Freebuff session they already have.
+- `POST /api/device/token` → polled by the app; the single mint of a `ks_…` token.
+- `GET /device` → the server-rendered consent page (no JavaScript, strict CSP).
+- `GET /api/tokens`, `POST /api/tokens/revoke` → list and revoke, owner-scoped.
+- `GET`/`POST /api/sync` accept `Authorization: Bearer …` as well as the cookie.
+
+**Same-origin enforcement is not weakened for the web client.** The check is now
+tied to the credential rather than the method: a cookie-authenticated state
+change still must be same-origin (unchanged, still covered by route test 2), while
+a bearer request needs no origin check because no browser attaches that header by
+itself. Device codes and tokens are stored only as SHA-256, and an unusable
+`Authorization` header is a `401` rather than a silent fall back to the session.
+
+Full protocol, error codes and the client algorithm: [docs/DEVICE-AUTH.md](docs/DEVICE-AUTH.md).

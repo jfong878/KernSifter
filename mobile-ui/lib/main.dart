@@ -11,9 +11,20 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import 'auth.dart';
 import 'core_engine_ffi.dart';
 import 'models.dart';
+import 'token_store.dart';
+
+/// Where the sync Worker lives. Supplied at build time, never guessed:
+///
+///   flutter run --dart-define=KERNSIFTER_SYNC_ORIGIN=https://kernsifter-sync.<sub>.workers.dev
+///
+/// Empty by default, so an unconfigured build says so instead of failing in a
+/// way that looks like a bug in the app.
+const String _syncOrigin = String.fromEnvironment('KERNSIFTER_SYNC_ORIGIN');
 
 void main() {
   runApp(const KernSifterApp());
@@ -257,11 +268,29 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   KernSifterController? _controller;
+
+  /// Null unless a sync origin was supplied at build time.
+  DeviceAuthClient? _sync;
+
+  /// Non-null while the device is waiting for the human to approve it in a
+  /// browser. Rendered inline rather than in a dialog, so cancelling cannot
+  /// race with the poll loop over the navigation stack.
+  DeviceAuthorization? _syncAuthorization;
+
+  String _syncStatus = 'Sync: not connected';
+  bool _syncBusy = false;
   String? _loadError;
 
   @override
   void initState() {
     super.initState();
+    _sync = _syncOrigin.isEmpty
+        ? null
+        : DeviceAuthClient(
+            origin: Uri.parse(_syncOrigin),
+            store: SecureTokenStore(),
+            clientName: 'KernSifter mobile',
+          );
     // Opening the library can fail (missing .so, ABI mismatch). That is a build
     // problem, so it is reported as a full-screen error rather than a snackbar
     // on a UI that could never work.
@@ -274,6 +303,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _sync?.close();
     _controller?.dispose();
     super.dispose();
   }
@@ -317,24 +347,161 @@ class _HomePageState extends State<HomePage> {
             title: const Text('KernSifter'),
             actions: [
               IconButton(
+                tooltip: _sync == null ? 'Sync is not configured' : _syncStatus,
+                icon: Icon(
+                  _sync == null
+                      ? Icons.cloud_off_outlined
+                      : (_syncAuthorization != null
+                          ? Icons.cloud_sync_outlined
+                          : Icons.cloud_queue_outlined),
+                ),
+                onPressed: _syncBusy ? null : _toggleSync,
+              ),
+              IconButton(
                 tooltip: 'About the engine',
                 icon: const Icon(Icons.info_outline),
                 onPressed: () => _showEngineInfo(context, controller),
               ),
             ],
           ),
-          body: controller.error != null
-              ? _ErrorBanner(
-                  message: controller.error!,
-                  onDismiss: controller.clearError,
-                )
-              : _body(context, controller),
+          body: Column(
+            children: [
+              if (_syncAuthorization != null) _syncBanner(_syncAuthorization!),
+              Expanded(
+                child: controller.error != null
+                    ? _ErrorBanner(
+                        message: controller.error!,
+                        onDismiss: controller.clearError,
+                      )
+                    : _body(context, controller),
+              ),
+            ],
+          ),
           bottomNavigationBar: controller.busy
               ? const LinearProgressIndicator()
               : null,
         );
       },
     );
+  }
+
+  /// The approval step, inline: the user reads the code, opens a browser, and
+  /// this disappears either when the poll succeeds or when they cancel.
+  Widget _syncBanner(DeviceAuthorization authorization) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Approve this device', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text(
+              'Enter this code in your browser to finish connecting:',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 6),
+            SelectableText(
+              authorization.userCode,
+              style: theme.textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 4),
+            SelectableText(
+              authorization.verificationUriComplete.toString(),
+              style: theme.textTheme.bodySmall,
+            ),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: authorization.verificationUriComplete.toString()),
+                    );
+                    _snack('Link copied. Paste it into your browser.');
+                  },
+                  icon: const Icon(Icons.copy_all_outlined),
+                  label: const Text('Copy link'),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _syncAuthorization = null),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Connect when there is no token, disconnect when there is.
+  Future<void> _toggleSync() async {
+    final sync = _sync;
+    if (sync == null) {
+      _snack('Sync is not configured. Build with '
+          '--dart-define=KERNSIFTER_SYNC_ORIGIN=<worker origin>.');
+      return;
+    }
+    if (_syncBusy) return;
+    if (await sync.currentToken() != null) {
+      await _disconnectFromSync(sync);
+    } else {
+      await _connectToSync(sync);
+    }
+  }
+
+  Future<void> _connectToSync(DeviceAuthClient sync) async {
+    setState(() => _syncBusy = true);
+    try {
+      final authorization = await sync.start();
+      if (!mounted) return;
+      setState(() => _syncAuthorization = authorization);
+      // isCancelled is consulted between polls, so Cancel stops the loop and
+      // the token is never minted.
+      final token = await sync.poll(
+        authorization,
+        isCancelled: () => _syncAuthorization == null,
+      );
+      await sync.store.write(token);
+      if (!mounted) return;
+      setState(() {
+        _syncAuthorization = null;
+        _syncStatus = 'Sync connected';
+      });
+      _snack('Connected. This device can now sync your KernSifter data.');
+    } on DeviceAuthException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _syncAuthorization = null;
+        _syncStatus = 'Sync failed: ${error.reason.name}';
+      });
+      _snack(error.message);
+    } finally {
+      if (mounted) setState(() => _syncBusy = false);
+    }
+  }
+
+  Future<void> _disconnectFromSync(DeviceAuthClient sync) async {
+    setState(() => _syncBusy = true);
+    try {
+      // Revokes at the server as well as clearing the keystore: deleting the
+      // local copy alone would leave a live credential.
+      await sync.disconnect();
+      if (!mounted) return;
+      setState(() => _syncStatus = 'Sync: not connected');
+      _snack("Disconnected. This device's token was revoked at the server.");
+    } on DeviceAuthException catch (error) {
+      _snack(error.message);
+    } finally {
+      if (mounted) setState(() => _syncBusy = false);
+    }
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _body(BuildContext context, KernSifterController controller) {

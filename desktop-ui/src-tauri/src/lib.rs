@@ -12,6 +12,8 @@
 //!   user's OS recycle bin. Refuses without explicit confirmation; the
 //!   frontend must present its own irreversible-action dialog.
 
+mod auth;
+
 use core_engine::safety::execution as execution;
 use core_engine::safety::manifest::ManifestRegistry;
 use core_engine::{
@@ -89,7 +91,12 @@ pub fn run() {
             generate_manifest,
             execute_manifest,
             empty_recycle_bin,
-            recycle_bin_summary
+            recycle_bin_summary,
+            // Sync credential custody. The device-authorization flow itself runs
+            // in the webview (src/sync-auth.js); only the keystore is native.
+            auth::store_token,
+            auth::load_token,
+            auth::clear_token
         ])
         .run(tauri::generate_context!())
         .expect("error while running KernSifter");

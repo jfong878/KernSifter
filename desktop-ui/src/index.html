@@ -130,10 +130,21 @@
       <button id="btnExecute" class="danger" disabled>Execute to Trash</button>
       <button id="btnInspectTrash" title="Read-only breakdown of what's in the OS Recycle Bin">Inspect Recycle Bin</button>
       <button id="btnEmptyTrash" class="danger" disabled title="Permanently empties the OS Recycle Bin — irreversible">Empty Recycle Bin</button>
+      <button id="btnSyncConnect" title="Sign in once to sync KernSifter data across your devices">Connect to sync</button>
+      <button id="btnSyncForget" disabled title="Revokes this device's token at the server, then forgets it locally">Disconnect</button>
       <label class="check"><input type="checkbox" id="simulate" checked /> Simulation only (no changes)</label>
       <label class="check"><input type="checkbox" id="confirmed" disabled /> I reviewed the manifest — proceed</label>
     </div>
     <div class="status" id="status">Ready. Scanning never deletes anything — it only reports.</div>
+    <div class="status" id="syncStatus">Sync: not connected.</div>
+    <div id="syncCodePanel" hidden>
+      <p>Enter this code in your browser to approve this device: <code id="syncCode"></code></p>
+      <input id="syncUrl" type="text" readonly style="width:100%" />
+      <div class="controls">
+        <button id="btnSyncCopy" type="button">Copy link</button>
+        <button id="btnSyncOpen" type="button">Open in browser</button>
+      </div>
+    </div>
   </div>
 
   <div class="stats" id="stats"></div>
@@ -611,6 +622,130 @@ $("confirmed").addEventListener("change", () => { $("btnExecute").disabled = !ca
 $("modeChip").textContent = isTauri ? "Live engine" : "Preview (mock)";
 $("modeChip").className = "chip " + (isTauri ? "live" : "mock");
 if (!isTauri) $("banner").classList.add("show");
+</script>
+
+<script type="module">
+// Sync sign-in for the desktop shell.
+//
+// The device-authorization flow runs here in the webview, which already has
+// `fetch`; only custody of the token is native, so it can live in the OS
+// credential store instead of the webview. Protocol: kernsifter-sync/docs/DEVICE-AUTH.md
+import { DeviceAuthError, DeviceAuthFailure, createDeviceAuthClient } from "./sync-auth.js";
+
+// Set this to the deployed Worker origin, for example
+//   "https://kernsifter-sync.<your-subdomain>.workers.dev"
+// Left empty deliberately: a guessed default would fail in a way that looks like
+// a bug in the app rather than missing configuration.
+const SYNC_ORIGIN = "";
+
+const byId = (id) => document.getElementById(id);
+const say = (message, isError = false) => {
+  byId("syncStatus").textContent = (isError ? "Error: " : "") + message;
+};
+const setButtons = (connected) => {
+  byId("btnSyncConnect").disabled = connected;
+  byId("btnSyncForget").disabled = !connected;
+};
+
+const MESSAGES = {
+  [DeviceAuthFailure.accessDenied]: "The request was denied in the browser. Nothing was shared.",
+  [DeviceAuthFailure.expired]: "The code expired before it was approved. Try again.",
+  [DeviceAuthFailure.invalidGrant]: "That sign-in is no longer valid. Try again.",
+  [DeviceAuthFailure.network]: "Could not reach the sync service. Check your connection.",
+  [DeviceAuthFailure.malformed]: "The sync service answered unexpectedly.",
+};
+
+const inShell = !!(window.__TAURI__ && window.__TAURI__.core);
+const invoke = (command, args) => window.__TAURI__.core.invoke(command, args);
+
+// The token is handed straight to the Rust keystore. It is never written to
+// localStorage, which anything running in this webview could read.
+const store = {
+  read: () => invoke("load_token"),
+  write: (token) => invoke("store_token", { token }),
+  clear: () => invoke("clear_token"),
+};
+
+let client = null;
+let busy = false;
+
+function showCode(authorization) {
+  byId("syncCode").textContent = authorization.userCode;
+  byId("syncUrl").value = authorization.verificationUriComplete;
+  byId("syncCodePanel").hidden = false;
+  say("Waiting for approval. Enter the code above in your browser.");
+}
+
+async function connect() {
+  if (!SYNC_ORIGIN) {
+    say("Set SYNC_ORIGIN in index.html to your Worker origin before connecting.", true);
+    return;
+  }
+  if (!client || busy) return;
+  busy = true;
+  byId("btnSyncConnect").textContent = "Waiting for approval…";
+  try {
+    await client.connect({ onCode: showCode });
+    byId("syncCodePanel").hidden = true;
+    say("Sync connected. This device can now read and write your KernSifter data.");
+    setButtons(true);
+  } catch (error) {
+    const reason = error instanceof DeviceAuthError ? error.reason : null;
+    say(MESSAGES[reason] ?? "Sign-in failed: " + (error?.message ?? error), true);
+  } finally {
+    busy = false;
+    byId("btnSyncConnect").textContent = "Connect to sync";
+  }
+}
+
+async function disconnect() {
+  if (!client) return;
+  // disconnect() revokes the token at the server before clearing it locally;
+  // clearing it locally alone would leave a live credential behind.
+  try {
+    await client.disconnect();
+    say("Sync disconnected. This device's token was revoked at the server.");
+  } catch (error) {
+    say("Cleared locally, but the server may still hold the token: " + (error?.message ?? error), true);
+  } finally {
+    byId("syncCodePanel").hidden = true;
+    setButtons(false);
+  }
+}
+
+byId("btnSyncConnect").addEventListener("click", connect);
+byId("btnSyncForget").addEventListener("click", disconnect);
+byId("btnSyncCopy").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(byId("syncUrl").value);
+    say("Link copied. Paste it into your browser.");
+  } catch {
+    byId("syncUrl").select();
+    say("Select the link above and copy it manually.");
+  }
+});
+byId("btnSyncOpen").addEventListener("click", () => {
+  if (!window.open(byId("syncUrl").value, "_blank")) {
+    say("The shell blocked the new window — copy the link into your browser instead.");
+  }
+});
+
+if (!inShell) {
+  say("Sync needs the Tauri shell: the token is kept in the OS keystore, not in this page.");
+  byId("btnSyncConnect").disabled = true;
+} else if (!SYNC_ORIGIN) {
+  say("Sync: set SYNC_ORIGIN in index.html to your Worker origin.");
+} else {
+  client = createDeviceAuthClient({ origin: SYNC_ORIGIN, store });
+  setButtons(false);
+  client
+    .isConnected()
+    .then((connected) => {
+      setButtons(connected);
+      say(connected ? "Sync: connected." : "Sync: not connected.");
+    })
+    .catch((error) => say("Could not check the connection: " + (error?.message ?? error), true));
+}
 </script>
 </body>
 </html>

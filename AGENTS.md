@@ -38,8 +38,21 @@ Workspace hygiene, per `F:\Projects\AGENTS.md`:
     as "cache purged, rebuild" instead of a wall of fake trait errors. It also
     reports new Id 11 events per build, and exits 90 (corruption, purged),
     91 (corruption, `--no-purge`) or cargo's own code.
+  - When F: is taken offline for repair/empty, the build cache (`target/`) is not
+    a safe in-flight payload for a failing USB volume; treat it as disposable and
+    rebuild after the volume is re-mounted, rather than trying to preserve it
+    across the empty.
   - Re-check the Id 11 count before assuming the hardware settled:
     `Get-WinEvent -FilterHashtable @{LogName='System'; Id=11; StartTime=(Get-Date).AddDays(-1)}`
+  - Before any F:-resident task that reads rustc artifacts (`target/`, `.rmeta`),
+    re-confirm the Id 11 trend rather than the single point-in-time count.
+  - If F:-resident work is to be paused for a volume repair/empty, run this repo
+    to a safe non-F: path first (the machine convention is a `<workspace>.copy/`
+    tree on the working volume) and do the empty/repoint from there, not from a
+    live F:-resident checkout.
+  - After a successful repair/empty and re-mount, re-baseline the repo onto F:
+    only after confirming Id 11 is no longer accumulating and `Get-Volume F`
+    reports `Healthy`/`OK` with the dirty bit cleared.
   - Never "fix" the resulting trait-bound errors in the source. If the errors
     are nonsense, suspect the cache.
 - **Durable tooling lives in `scripts\`, not `.freebuff\scratch\`.** The

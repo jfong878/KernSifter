@@ -34,6 +34,10 @@ dependencies:
   ffi: ^2.1.0
   # @visibleForTesting on the FFI binding's test-only constructor.
   meta: ^1.15.0
+  # Keystore-backed storage for the sync bearer token (Android Keystore /
+  # iOS Keychain). Deliberately NOT shared_preferences: a bearer token is a
+  # credential for the user's synced data and must not sit in plain XML.
+  flutter_secure_storage: ^9.2.2
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

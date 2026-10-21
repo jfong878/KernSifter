@@ -20,6 +20,14 @@ enabled = true
 FREEBUFF_CLIENT_ID = "REPLACE_ME"
 APP_ORIGIN = "REPLACE_ME"
 
+# Origins the Tauri webview may call this API from. A webview is a browser, so
+# its calls are cross-origin and need CORS; these are the shell's own origins.
+# Deliberately an allowlist and never `*`: POST /api/device/authorize needs no
+# credential, so an open policy would let any page mint a device code, hand the
+# victim a user code, and redeem the approval for itself. Add a local dev-server
+# origin here only if you run the frontend in a real browser.
+ALLOWED_WEBVIEW_ORIGINS = "http://tauri.localhost,https://tauri.localhost,tauri://localhost"
+
 # Structured sync state.
 [[d1_databases]]
 binding = "SYNC_DB"
