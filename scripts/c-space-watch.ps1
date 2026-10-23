@@ -151,6 +151,14 @@
   installed copy says so in the log and in the alert, instead of leaving an old rule in
   place silently.
 
+  -Register also refuses a file whose suites have not passed. The suites run from an
+  ordinary prompt (scripts\test-c-space-watch.ps1) and leave a receipt bound to this
+  file's SHA-256; -Register installs only when the receipt covers this exact file and
+  reports success. Editing the script after a green run therefore blocks the install until
+  the suites are run again, which is the point. A receipt from an elevated run is refused:
+  an elevated run declines the collector, so the grower and dry-run suites cannot pass
+  there. -SkipTestGate installs anyway and prints why it should not have.
+
 .PARAMETER Unregister
   Remove the scheduled task.
 
@@ -309,6 +317,12 @@ param(
     [switch]$Quiet,
 
     [switch]$Register,
+
+    # Install without a green test receipt. The gate below refuses a file whose suites have
+    # not passed; this is the way past it when the suites themselves cannot run (a machine
+    # without icacls, say), and it says so in the log rather than installing quietly.
+    [switch]$SkipTestGate,
+
     [switch]$Unregister,
     [int]$EveryMinutes = 15,
     [string]$TaskName = 'C Space Watch',
@@ -411,6 +425,61 @@ function Get-InstallNote {
     return $null
 }
 
+# ---------------------------------------------------------------- test gate
+# -Register installs a file that then runs with the administrator token, so a broken one
+# cannot be waved through. The check is a receipt rather than a test run, because -Register
+# is elevated and several suites cannot pass with an admin token by design: an elevated run
+# declines the collector, so the grower and dry-run suites fail there and nowhere else. The
+# suites are therefore run from an ordinary prompt, where they mean something, and the
+# runner leaves a receipt bound to the SHA-256 of the file it tested. Only a file whose own
+# hash the receipt covers is installed, so editing the script after a green run sends you
+# back to the suites -- which is the point.
+function Test-TestReceipt([string]$scriptPath, [string]$receiptPath) {
+    $result = [pscustomobject]@{ Allowed = $false; Reason = $null; Receipt = $null; ReceiptPath = $receiptPath }
+    if (-not (Test-Path -LiteralPath $receiptPath)) {
+        $result.Reason = "there is no test receipt at $receiptPath"
+        return $result
+    }
+    try { $receipt = Get-Content -LiteralPath $receiptPath -Raw -ErrorAction Stop | ConvertFrom-Json } catch {
+        $result.Reason = "the test receipt at $receiptPath cannot be read ($($_.Exception.Message))"
+        return $result
+    }
+    $result.Receipt = $receipt
+    if (-not $receipt.sha256) {
+        $result.Reason = 'the test receipt does not say which file it tested'
+        return $result
+    }
+    if ($receipt.state -eq 'running') {
+        $result.Reason = 'the last test run started and never finished'
+        return $result
+    }
+    # A receipt from an elevated run is not evidence: the suites that cannot pass there are
+    # the ones an install most needs checked, and a green one would have skipped them.
+    if ($receipt.elevated) {
+        $result.Reason = 'the test receipt came from an elevated run, where several suites cannot pass'
+        return $result
+    }
+    $hash = (Get-FileHash -LiteralPath $scriptPath -Algorithm SHA256).Hash
+    $receiptHash = [string]$receipt.sha256
+    if ($receiptHash -ne $hash) {
+        # Short enough to print whatever it holds: a truncated or hand-written receipt is a
+        # refusal to explain, not an exception to throw in the middle of -Register.
+        $shown = if ($receiptHash.Length -gt 8) { $receiptHash.Substring(0, 8) } else { $receiptHash }
+        $result.Reason = "the suites were not run against this file: the receipt covers '{0}', this file is {1}..." -f $shown, $hash.Substring(0, 8)
+        return $result
+    }
+    if (-not $receipt.suites -or [int]$receipt.suites -le 0) {
+        $result.Reason = 'the test receipt records no suites'
+        return $result
+    }
+    if (-not $receipt.passed) {
+        $result.Reason = "the last run of the suites failed: {0} of {1} suite(s)" -f $receipt.failed, $receipt.suites
+        return $result
+    }
+    $result.Allowed = $true
+    return $result
+}
+
 if ($Unregister) {
     $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if (-not $existing) { Write-Host "no task named '$TaskName'"; exit 0 }
@@ -454,6 +523,25 @@ if ($Register) {
         Write-Host '  register from the file you edit, so the copy has a source to be compared against:'
         Write-Host '  powershell -NoProfile -ExecutionPolicy Bypass -File "<checkout>\scripts\c-space-watch.ps1" -Register'
         exit 2
+    }
+    # Before anything is created or copied: a file whose suites have not passed does not get
+    # to run with the administrator token. See Test-TestReceipt for why this is a receipt
+    # and not a test run here.
+    $gate = Test-TestReceipt -scriptPath $PSCommandPath -receiptPath (Join-Path $StateDir 'test-receipt.json')
+    if (-not $gate.Allowed) {
+        if ($SkipTestGate) {
+            Write-Host "installing without the suites -- $($gate.Reason)"
+            Write-Host '  (-SkipTestGate was given; the receipt is not being consulted)'
+        } else {
+            Write-Host "not registered -- $($gate.Reason)"
+            Write-Host '  run the suites from an ordinary prompt and register again:'
+            Write-Host ('  powershell -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path (Split-Path -Parent $PSCommandPath) 'test-c-space-watch.ps1'))
+            Write-Host '  not from an elevated prompt: an elevated run declines the collector, so the'
+            Write-Host '  grower and dry-run suites cannot pass there and the receipt would be refused.'
+            Write-Host ('  the receipt is {0}' -f $gate.ReceiptPath)
+            Write-Host '  -SkipTestGate installs anyway, and says so in the log.'
+            exit 4
+        }
     }
     if (-not (Test-Path -LiteralPath $InstallDir)) {
         New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
