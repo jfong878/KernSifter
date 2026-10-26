@@ -59,3 +59,9 @@ Workspace hygiene, per `F:\Projects\AGENTS.md`:
   scratch rule above is for one-off probes, logs and inventory dumps.
   `scripts\` holds things meant to be re-run — treat it as source, and do not
   delete it as part of scratch cleanup.
+- **`scripts\c-space-watch.ps1` is the source, not what runs.** The elevated
+  "C Space Watch" task executes a copy installed at
+  `C:\Program Files\C-Space Watch`, which a non-elevated process cannot write.
+  Editing the checkout changes nothing until `-Register` is run again from an
+  elevated prompt; the installed copy says so in its log and alert when the two
+  differ.
