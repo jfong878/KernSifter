@@ -1,0 +1,9 @@
+{
+  "name": "kernsifter-desktop-ui",
+  "private": true,
+  "type": "module",
+  "description": "KernSifter desktop frontend (static, loaded by the Tauri webview). 'type: module' lets Node run src/*.js tests unchanged.",
+  "scripts": {
+    "test": "node test/sync-auth.test.mjs"
+  }
+}

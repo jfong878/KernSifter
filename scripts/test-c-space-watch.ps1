@@ -72,19 +72,30 @@ foreach ($t in $tests) {
         "$t  MISSING"
         $bad += 1
         $failures.Add("$t is missing")
-        $results.Add([pscustomobject]@{ suite = $t; code = $null; missing = $true })
+        $results.Add([pscustomobject]@{ suite = $t; code = $null; missing = $true; seconds = $null })
         continue
     }
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path 2>&1 | Out-String
+    $sw.Stop()
+    $secs = [math]::Round($sw.Elapsed.TotalSeconds, 1)
     $code = $LASTEXITCODE
     $last = (@($out -split "`r?`n" | Where-Object { $_.Trim() }) | Select-Object -Last 1)
-    '{0,-32} exit={1,-3} {2}' -f $t, $code, $last
-    $results.Add([pscustomobject]@{ suite = $t; code = $code })
+    # Wall time per suite: a suite that grew slow is the first sign of a fixture that no
+    # longer fits its budget, and the number belongs next to the verdict it produced.
+    '{0,-32} exit={1,-3} {2,7:N1}s  {3}' -f $t, $code, $secs, $last
+    $results.Add([pscustomobject]@{ suite = $t; code = $code; seconds = $secs })
     if ($code -ne 0) {
         $bad += 1
         $failures.Add($t)
         @($out -split "`r?`n" | Where-Object { $_ -match 'FAIL|Exception|error' } | Select-Object -First 8) | ForEach-Object { "    $_" }
     }
+}
+# The slowest few, so the suites that cost the run its time are visible without reading
+# every line. Only suites that actually ran are ranked; a missing one has no seconds.
+$ranked = @($results | Where-Object { $null -ne $_.seconds } | Sort-Object seconds -Descending | Select-Object -First 5)
+if ($ranked.Count -gt 0) {
+    'slowest     : ' + (($ranked | ForEach-Object { '{0} {1:N1}s' -f $_.suite, $_.seconds }) -join ', ')
 }
 '---'
 "$bad suite(s) with a non-zero exit"

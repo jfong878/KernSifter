@@ -32,3 +32,6 @@ mobile-ui/android/local.properties
 *.iml
 .DS_Store
 Thumbs.db
+
+# Agent / tool attachments (never committed)
+.cloud-attachments/
