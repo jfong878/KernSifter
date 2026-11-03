@@ -1,0 +1,50 @@
+name: release
+
+# Publishing: push a version tag matching tauri.conf.json, e.g.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# tauri-action builds the bundle, signs the updater artifacts with the
+# TAURI_SIGNING_PRIVATE_KEY secret, publishes a GitHub Release and writes
+# `latest.json` — the exact feed the desktop app polls from
+# plugins.updater.endpoints in tauri.conf.json.
+#
+# Windows-only for now. Adding macOS/Linux jobs needs their platform deps
+# (on Ubuntu: libwebkit2gtk-4.1-dev, libappindicator3-dev, librsvg2-dev,
+# patchelf; the keyring crate's secret-service feature also needs dbus).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: desktop-ui
+          tagName: v__VERSION__
+          releaseName: "KernSifter v__VERSION__"
+          releaseBody: |
+            Download the `.exe` (or `.msi`) below to install.
+
+            Installed copies update themselves: open the app, then
+            **About & updates → Check for updates**.
+          releaseDraft: false
+          prerelease: false

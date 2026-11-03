@@ -20,6 +20,12 @@ use core_engine::{
     DryRunManifest, EmptyTrashReport, ExecutionReport, RecycleBinSummary, ScanReport,
 };
 use tauri::State;
+use tauri_plugin_updater::UpdaterExt;
+
+/// The canonical public repository. Everything user-facing that points at the
+/// project — the "download latest" link and the updater feed — derives from
+/// this one slug, so the app can never advertise a link that has drifted.
+pub const GITHUB_REPO: &str = "jfong878/KernSifter";
 
 /// Process-scoped state: the manifest registry gates execution — you can only
 /// execute manifests that were generated (and reviewable) in this session.
@@ -82,16 +88,90 @@ fn recycle_bin_summary() -> Result<RecycleBinSummary, String> {
     Ok(core_engine::recycle_bin_summary())
 }
 
+/// Build metadata surfaced to the frontend: the running version, the canonical
+/// repository slug, and where a human can download the latest release.
+#[derive(serde::Serialize)]
+struct AppInfo {
+    version: String,
+    repo: String,
+    releases_url: String,
+}
+
+#[tauri::command]
+fn app_info(app: tauri::AppHandle) -> AppInfo {
+    AppInfo {
+        version: app.package_info().version.to_string(),
+        repo: GITHUB_REPO.to_string(),
+        releases_url: format!("https://github.com/{GITHUB_REPO}/releases/latest"),
+    }
+}
+
+/// Result of an update check. Read-only: nothing is downloaded or executed
+/// until [`install_update`] is called.
+#[derive(serde::Serialize)]
+struct UpdateInfo {
+    available: bool,
+    current_version: String,
+    version: Option<String>,
+    notes: Option<String>,
+    date: Option<String>,
+}
+
+/// Asks the release feed whether a newer signed version exists.
+#[tauri::command]
+async fn check_for_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
+    let current = app.package_info().version.to_string();
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    match updater.check().await.map_err(|e| e.to_string())? {
+        None => Ok(UpdateInfo {
+            available: false,
+            current_version: current,
+            version: None,
+            notes: None,
+            date: None,
+        }),
+        Some(update) => Ok(UpdateInfo {
+            available: true,
+            current_version: current,
+            version: Some(update.version.clone()),
+            notes: update.body.clone(),
+            date: update.date.map(|d| d.to_string()),
+        }),
+    }
+}
+
+/// Downloads and installs the newest signed release, then relaunches.
+///
+/// The package is verified against the minisign public key in
+/// `tauri.conf.json` (`plugins.updater.pubkey`) before anything executes, so a
+/// tampered or unsigned update is rejected at the plugin boundary.
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {
+        return Ok(());
+    };
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|e| e.to_string())?;
+    app.restart()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             scan,
             generate_manifest,
             execute_manifest,
             empty_recycle_bin,
             recycle_bin_summary,
+            app_info,
+            check_for_update,
+            install_update,
             // Sync credential custody. The device-authorization flow itself runs
             // in the webview (src/sync-auth.js); only the keystore is native.
             auth::store_token,

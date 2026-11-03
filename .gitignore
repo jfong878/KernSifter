@@ -23,6 +23,10 @@ mobile-ui/android/local.properties
 # `pubspec.lock` is deliberately NOT ignored: this is an application, not a
 # package, so its resolved dependency versions are part of the build.
 
+# Tauri updater signing key material. The private key must never be committed;
+# CI reads it from the TAURI_SIGNING_PRIVATE_KEY repository secret.
+desktop-ui/.tauri/
+
 # Agent / tool scratch (never committed)
 .freebuff/
 

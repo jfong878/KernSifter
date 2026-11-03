@@ -19,6 +19,10 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+# Self-updates from signed GitHub Release assets. The endpoint and the minisign
+# public key live in tauri.conf.json under plugins.updater; the private key is
+# only ever a CI secret or a local, git-ignored file.
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The single source of truth — all cleaning logic lives here.

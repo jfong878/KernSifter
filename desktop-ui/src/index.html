@@ -104,6 +104,8 @@
   .status.err { color: var(--bad); }
   .more { color: var(--muted); font-size: 11.5px; margin-top: 8px; }
   footer { color: var(--muted); font-size: 11.5px; text-align: center; margin-top: 8px; }
+  a { color: var(--accent); }
+  a:hover { filter: brightness(1.2); }
 </style>
 </head>
 <body>
@@ -195,6 +197,17 @@
       <tbody id="execBody"></tbody>
     </table>
     <div class="more" id="execMore"></div>
+  </div>
+
+  <div class="panel">
+    <h2>About &amp; updates</h2>
+    <div class="controls">
+      <span class="check" id="appVersion">Version …</span>
+      <button id="btnCheckUpdate">Check for updates</button>
+      <button id="btnInstallUpdate" class="primary" style="display:none">Install &amp; restart</button>
+      <a id="latestLink" href="https://github.com/jfong878/KernSifter/releases/latest" target="_blank" rel="noopener">Download latest</a>
+    </div>
+    <div class="status" id="updateStatus"></div>
   </div>
 
   <footer>core-engine · Tauri shell · Windows / macOS / Linux · Android / iOS (SAF &amp; scoped storage)</footer>
@@ -368,6 +381,16 @@ const backend = isTauri
         if (cmd === "execute_manifest") return mock.executeManifest(args || {});
         if (cmd === "empty_recycle_bin") return mock.emptyRecycleBin(args || {});
         if (cmd === "recycle_bin_summary") return mock.recycleBinSummary();
+        if (cmd === "app_info")
+          return {
+            version: "0.1.0",
+            repo: "jfong878/KernSifter",
+            releases_url: "https://github.com/jfong878/KernSifter/releases/latest",
+          };
+        if (cmd === "check_for_update")
+          return { available: false, current_version: "0.1.0", version: null, notes: null, date: null };
+        if (cmd === "install_update")
+          throw new Error("Updates install inside the Tauri shell only.");
         throw new Error("unknown command: " + cmd);
       },
     };
@@ -622,6 +645,62 @@ $("confirmed").addEventListener("change", () => { $("btnExecute").disabled = !ca
 $("modeChip").textContent = isTauri ? "Live engine" : "Preview (mock)";
 $("modeChip").className = "chip " + (isTauri ? "live" : "mock");
 if (!isTauri) $("banner").classList.add("show");
+
+/* ------------------------------------------------------------------ *
+ * About & updates. The app points at the canonical public repository;   *
+ * updates come from its signed GitHub Release assets.                    *
+ * ------------------------------------------------------------------ */
+function updateStatus(msg, isErr) {
+  const el = $("updateStatus");
+  el.textContent = msg;
+  el.className = "status" + (isErr ? " err" : "");
+}
+
+async function refreshAppInfo() {
+  try {
+    const info = await backend.invoke("app_info");
+    $("appVersion").textContent = "Version " + info.version + " · " + info.repo;
+    $("latestLink").href = info.releases_url;
+  } catch {
+    $("appVersion").textContent = "Version unknown";
+  }
+}
+
+async function checkUpdate() {
+  $("btnCheckUpdate").disabled = true;
+  $("btnInstallUpdate").style.display = "none";
+  updateStatus("Checking GitHub Releases…");
+  try {
+    const info = await backend.invoke("check_for_update");
+    if (!info.available) {
+      updateStatus("You're up to date (v" + info.current_version + ").");
+    } else {
+      const notes = info.notes ? " — " + info.notes : "";
+      updateStatus("Update available: v" + info.version + notes);
+      $("btnInstallUpdate").style.display = "";
+    }
+  } catch (e) {
+    updateStatus("Update check failed: " + e.message, true);
+  } finally {
+    $("btnCheckUpdate").disabled = false;
+  }
+}
+
+async function installUpdate() {
+  $("btnInstallUpdate").disabled = true;
+  updateStatus("Downloading and verifying the signed update…");
+  try {
+    await backend.invoke("install_update");
+    updateStatus("Update installed — restarting…");
+  } catch (e) {
+    updateStatus("Update failed: " + e.message, true);
+    $("btnInstallUpdate").disabled = false;
+  }
+}
+
+$("btnCheckUpdate").addEventListener("click", checkUpdate);
+$("btnInstallUpdate").addEventListener("click", installUpdate);
+refreshAppInfo();
 </script>
 
 <script type="module">

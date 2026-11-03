@@ -42,6 +42,26 @@ Dev mode serves the plain HTML frontend; no npm/node required. For real
 scanning on Linux you'll need read access to the cache roots; `C:\Windows\Prefetch`
 needs admin rights on modern Windows (the scanner reports, never crashes).
 
+## Self-updates & releases
+
+| Command | Purpose |
+|---|---|
+| `app_info` | Running version, canonical repo slug, "download latest" URL. |
+| `check_for_update` | Asks the release feed (`plugins.updater.endpoints`) whether a newer signed version exists. Read-only. |
+| `install_update` | Downloads, verifies and installs the newest signed release, then relaunches. |
+
+The trust anchor is the minisign public key in `tauri.conf.json`
+(`plugins.updater.pubkey`). Generate a new keypair with
+`cargo tauri signer generate -w desktop-ui/.tauri/kernsifter.key`; the private
+key must never be committed (`.tauri/` is git-ignored) and CI reads it from the
+`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository
+secrets.
+
+`bundle.createUpdaterArtifacts: true` makes every `cargo tauri build` emit the
+signed `.sig` packages; `.github/workflows/release.yml` publishes them (plus
+`latest.json`) on a `v*` tag push. Test builds without the signing env vars are
+fine — they simply can't be used as updates.
+
 ## Icons
 
 `python3 scripts/generate_icons.py` regenerates the icon set from the script's

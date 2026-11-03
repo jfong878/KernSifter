@@ -11,6 +11,23 @@ clients are thin shells that bind to it.
 - **Mobile UI** — Flutter (binds the compiled Rust binary via `libcore_engine.so`
   / `libcore_engine.dylib` FFI).
 
+## Download & updates
+
+Latest release — installer plus signed updater artifacts:
+**https://github.com/jfong878/KernSifter/releases/latest**
+
+The desktop app checks that release feed on demand ("Check for updates" in
+**About & updates**) and installs a newer version in place, then relaunches.
+Each update package is verified against a minisign public key committed in
+`desktop-ui/src-tauri/tauri.conf.json`; the matching private key exists only as
+the repository's `TAURI_SIGNING_PRIVATE_KEY` secret (and a local, git-ignored
+file for test builds) — an unsigned or tampered package is refused.
+
+Releases publish automatically from a tag: bump `version` in
+`desktop-ui/src-tauri/tauri.conf.json`, commit, then
+`git tag vX.Y.Z && git push origin vX.Y.Z` (see
+`.github/workflows/release.yml`).
+
 ## Directory Tree
 
 ```
