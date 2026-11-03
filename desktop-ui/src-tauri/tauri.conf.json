@@ -28,7 +28,7 @@
       "endpoints": [
         "https://github.com/jfong878/KernSifter/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhBQkE3RTgxQkU1QjUyODQKUldTRVVsdStnWDY2aXFRa1ZyL0QxUy9NRmdrODFERWJhbEhlOTRnaEpyVUtsK21TdG1Mc1lhdnUK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJGRUQxMUYyRUZFQzZERTYKUldUbWJlenY4aEh0djZmK1lYdEV0a280N1hQK1FDbFVYaDd4MDBUOTZsTkxKSzI5TmY4Z2VsSTcK"
     }
   },
   "bundle": {
